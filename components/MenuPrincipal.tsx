@@ -28,6 +28,12 @@ const modos: { modo: Modo; titulo: string; linea: string; clase: string }[] = [
     clase: "from-linea-azul to-[#1c4166] shadow-[0_4px_0_#123049]",
   },
   {
+    modo: "ahorcado",
+    titulo: "AHORCADO",
+    linea: "88",
+    clase: "from-linea-violeta to-[#4a2b4c] shadow-[0_4px_0_#331d34]",
+  },
+  {
     modo: "contrarreloj",
     titulo: "CONTRARRELOJ",
     linea: "39",
