@@ -39,9 +39,6 @@ function resolverRegeneracion(vidas: number, proximaVidaEnMs: number | null) {
  * Reemplaza a useVidasCarrera + progresoCarrera.
  * - Si hay sesión de Google: lee/escribe la fila del usuario en la tabla `usuarios` de Supabase.
  * - Si no hay sesión: sigue funcionando 100% con localStorage, como antes.
- *
- * Nota: si el usuario juega primero sin loguearse y después inicia sesión, el progreso
- * guardado en localStorage NO se migra automáticamente a Supabase (queda como mejora futura).
  */
 export function usePerfilJuego() {
   const { usuario, cargado: authCargado, logueado } = useAuth();
@@ -71,21 +68,18 @@ export function usePerfilJuego() {
 
         if (error) {
           console.error("Error cargando perfil de usuario:", error);
-          // No pisamos el progreso real: si falla la consulta, no reseteamos vidas.
-          // Simplemente no marcamos como "cargado" para que la pantalla espere,
-          // en vez de arrancar de cero con datos falsos.
           return;
         }
 
         if (!data) {
-          // Primera vez real que este usuario entra: crea su fila con valores iniciales
-          await supabase.from("usuarios").upsert({
+          const { error: errorUpsert } = await supabase.from("usuarios").upsert({
             id: usuario.id,
             vidas: VIDAS_MAX,
             proxima_vida_at: null,
             progreso_carrera: 1,
             gemas: 0,
           });
+          if (errorUpsert) console.error("Error creando perfil de usuario:", errorUpsert);
           if (!cancelado) {
             setEstado({ vidas: VIDAS_MAX, proximaVidaEn: null, nivel: 1, gemas: 0 });
             setCargado(true);
@@ -97,13 +91,14 @@ export function usePerfilJuego() {
         const resuelto = resolverRegeneracion(data.vidas, proximaMs);
 
         if (resuelto.vidas !== data.vidas || resuelto.proximaVidaEn !== proximaMs) {
-          await supabase
+          const { error: errorUpdate } = await supabase
             .from("usuarios")
             .update({
               vidas: resuelto.vidas,
               proxima_vida_at: resuelto.proximaVidaEn ? new Date(resuelto.proximaVidaEn).toISOString() : null,
             })
             .eq("id", usuario.id);
+          if (errorUpdate) console.error("Error actualizando regeneración de vidas:", errorUpdate);
         }
 
         if (!cancelado) {
@@ -146,7 +141,10 @@ export function usePerfilJuego() {
           supabase
             .from("usuarios")
             .update({ vidas, proxima_vida_at: proximaVidaEn ? new Date(proximaVidaEn).toISOString() : null })
-            .eq("id", usuario.id);
+            .eq("id", usuario.id)
+            .then(({ error }) => {
+              if (error) console.error("Error regenerando vida:", error);
+            });
         } else {
           guardarEstadoVidas({ vidas, proximaVidaEn });
         }
@@ -169,7 +167,10 @@ export function usePerfilJuego() {
         supabase
           .from("usuarios")
           .update({ vidas, proxima_vida_at: proximaVidaEn ? new Date(proximaVidaEn).toISOString() : null })
-          .eq("id", usuario.id);
+          .eq("id", usuario.id)
+          .then(({ error }) => {
+            if (error) console.error("Error guardando vida perdida:", error);
+          });
       } else {
         guardarEstadoVidas({ vidas, proximaVidaEn });
       }
@@ -183,7 +184,13 @@ export function usePerfilJuego() {
       setEstado((actual) => ({ ...actual, nivel: nuevoNivel }));
 
       if (logueado && usuario) {
-        supabase.from("usuarios").update({ progreso_carrera: nuevoNivel }).eq("id", usuario.id);
+        supabase
+          .from("usuarios")
+          .update({ progreso_carrera: nuevoNivel })
+          .eq("id", usuario.id)
+          .then(({ error }) => {
+            if (error) console.error("Error guardando progreso de carrera:", error);
+          });
       } else {
         guardarProgresoCarrera(nuevoNivel);
       }
