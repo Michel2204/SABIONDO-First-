@@ -8,8 +8,8 @@ import { NIVEL_MAX } from "@/lib/progresoCarrera";
 import { obtenerPreguntaDePool, obtenerDificultad, dificultadKeyPorNivel } from "@/lib/preguntasCarrera";
 import { obtenerPoolCarrera } from "@/lib/preguntasApi";
 import { Pregunta } from "@/lib/types";
-import IndicadorVidas from "./IndicadorVidas";
-import EsperaVidas from "./EsperaVidas";
+import IndicadorVidas from "@/components/IndicadorVidas";
+import EsperaVidas from "@/components/EsperaVidas";
 
 interface PantallaCarreraProps {
   onVolver: () => void;
