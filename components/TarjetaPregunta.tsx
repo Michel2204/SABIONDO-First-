@@ -47,7 +47,7 @@ export default function TarjetaPregunta({
         >
           ‹ SALIR
         </button>
-        <IndicadorVidas vidas={vidas} />
+        <IndicadorVidas vidas={vidas} total={5} />
       </div>
 
       <div

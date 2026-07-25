@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import ConsolaJuego from "@/components/ConsolaJuego";
 import MenuPrincipal from "@/components/MenuPrincipal";
@@ -11,27 +11,41 @@ import PantallaCarrera from "@/components/PantallaCarrera";
 import PantallaSalas from "@/components/PantallaSalas";
 import PantallaAhorcado from "@/components/PantallaAhoracado";
 import SelectorDificultadAhorcado from "@/components/SelectorDificultadAhorcado";
+import EsperaVidas from "@/components/EsperaVidas";
 import { obtenerPreguntasClasico } from "@/lib/preguntasApi";
 import { useAuth } from "@/lib/useAuth";
+import { usePerfilJuego } from "@/lib/usePerfilJuego";
+import { VIDAS_MAX } from "@/lib/vidasCarrera";
 import { Sala } from "@/lib/salas";
 import { Categoria, Modo, Pantalla, Pregunta } from "@/lib/types";
 import { DificultadAhorcado } from "@/lib/ahorcadoApi";
 import PantallaDuelo from "@/components/PantallaDuelo";
 
 const PREGUNTAS_POR_PARTIDA = 6;
-const VIDAS_INICIALES = 3;
 
 export default function Home() {
   const { usuario, logueado } = useAuth();
+  const { vidas, proximaVidaEn, nivel, cargado: perfilCargado, perderVida, avanzarNivel } = usePerfilJuego();
+
   const [pantalla, setPantalla] = useState<Pantalla>("menu");
   const [modo, setModo] = useState<Modo>("clasico");
-  const [vidas, setVidas] = useState(VIDAS_INICIALES);
   const [puntaje, setPuntaje] = useState(0);
   const [totalRespondidas, setTotalRespondidas] = useState(0);
   const [categoriaActual, setCategoriaActual] = useState<Categoria | null>(null);
   const [preguntaActual, setPreguntaActual] = useState<Pregunta | null>(null);
   const [salaActual, setSalaActual] = useState<Sala | null>(null);
   const [dificultadAhorcado, setDificultadAhorcado] = useState<DificultadAhorcado>("facil");
+  const [ahora, setAhora] = useState(Date.now());
+
+  // Tick del reloj de espera de vidas, compartido por Clásico y Carrera
+  useEffect(() => {
+    if (!perfilCargado || vidas >= VIDAS_MAX || proximaVidaEn === null) return;
+    const id = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [perfilCargado, vidas, proximaVidaEn]);
+
+  const sinVidas = perfilCargado && vidas <= 0;
+  const msRestantes = proximaVidaEn ? proximaVidaEn - ahora : 0;
 
   function iniciarPartida(m: Modo) {
     setModo(m);
@@ -59,7 +73,6 @@ export default function Home() {
       return;
     }
 
-    setVidas(VIDAS_INICIALES);
     setPuntaje(0);
     setTotalRespondidas(0);
     setPantalla("rueda");
@@ -71,26 +84,25 @@ export default function Home() {
   }
 
   async function elegirCategoria(categoria: Categoria) {
-  const preguntas = await obtenerPreguntasClasico(categoria.nombre);
-  const pregunta = preguntas[Math.floor(Math.random() * preguntas.length)];
-  setCategoriaActual(categoria);
-  setPreguntaActual(pregunta);
-  setPantalla("pregunta");
-}
+    const preguntas = await obtenerPreguntasClasico(categoria.nombre);
+    const pregunta = preguntas[Math.floor(Math.random() * preguntas.length)];
+    setCategoriaActual(categoria);
+    setPreguntaActual(pregunta);
+    setPantalla("pregunta");
+  }
 
   function responder(correcta: boolean) {
     setTotalRespondidas((t) => t + 1);
     if (correcta) {
       setPuntaje((p) => p + 1);
     } else {
-      setVidas((v) => v - 1);
+      perderVida();
     }
   }
 
   function siguientePregunta() {
-    const vidasRestantes = vidas;
     const totalActual = totalRespondidas;
-    if (vidasRestantes <= 0 || totalActual >= PREGUNTAS_POR_PARTIDA) {
+    if (vidas <= 0 || totalActual >= PREGUNTAS_POR_PARTIDA) {
       setPantalla("resultado");
     } else {
       setPantalla("rueda");
@@ -116,7 +128,17 @@ export default function Home() {
           )}
 
           {pantalla === "carrera" && (
-            <PantallaCarrera key="carrera" onVolver={volverAlMenu} />
+            <PantallaCarrera
+              key="carrera"
+              vidas={vidas}
+              proximaVidaEn={proximaVidaEn}
+              ahora={ahora}
+              nivel={nivel}
+              cargado={perfilCargado}
+              perderVida={perderVida}
+              avanzarNivel={avanzarNivel}
+              onVolver={volverAlMenu}
+            />
           )}
 
           {pantalla === "ahorcado-dificultad" && (
@@ -157,24 +179,32 @@ export default function Home() {
           )}
 
           {pantalla === "rueda" && (
-            <RuedaCategorias
-              key="rueda"
-              vidas={vidas}
-              onCategoriaElegida={elegirCategoria}
-              onVolver={volverAlMenu}
-            />
+            sinVidas ? (
+              <EsperaVidas key="espera-clasico-rueda" msRestantes={msRestantes} onVolver={volverAlMenu} />
+            ) : (
+              <RuedaCategorias
+                key="rueda"
+                vidas={vidas}
+                onCategoriaElegida={elegirCategoria}
+                onVolver={volverAlMenu}
+              />
+            )
           )}
 
           {pantalla === "pregunta" && categoriaActual && preguntaActual && (
-            <TarjetaPregunta
-              key="pregunta"
-              categoria={categoriaActual}
-              pregunta={preguntaActual}
-              vidas={vidas}
-              onResponder={responder}
-              onSiguiente={siguientePregunta}
-              onSalir={volverAlMenu}
-            />
+            sinVidas ? (
+              <EsperaVidas key="espera-clasico-pregunta" msRestantes={msRestantes} onVolver={volverAlMenu} />
+            ) : (
+              <TarjetaPregunta
+                key="pregunta"
+                categoria={categoriaActual}
+                pregunta={preguntaActual}
+                vidas={vidas}
+                onResponder={responder}
+                onSiguiente={siguientePregunta}
+                onSalir={volverAlMenu}
+              />
+            )
           )}
 
           {pantalla === "resultado" && (

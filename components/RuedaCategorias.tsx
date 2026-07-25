@@ -59,7 +59,7 @@ export default function RuedaCategorias({
         >
           ‹ VOLVER
         </button>
-        <IndicadorVidas vidas={vidas} />
+        <IndicadorVidas vidas={vidas} total={5} />
       </div>
 
       <p className="font-script text-crema text-xl my-5 text-center">

@@ -1,24 +1,38 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
-import { usePerfilJuego } from "@/lib/usePerfilJuego";
 import { NIVEL_MAX } from "@/lib/progresoCarrera";
 import { obtenerPreguntaDePool, obtenerDificultad, dificultadKeyPorNivel } from "@/lib/preguntasCarrera";
 import { obtenerPoolCarrera } from "@/lib/preguntasApi";
 import { Pregunta } from "@/lib/types";
 import IndicadorVidas from "@/components/IndicadorVidas";
 import EsperaVidas from "@/components/EsperaVidas";
+import { useEffect } from "react";
 
 interface PantallaCarreraProps {
+  vidas: number;
+  proximaVidaEn: number | null;
+  ahora: number;
+  nivel: number;
+  cargado: boolean;
+  perderVida: () => void;
+  avanzarNivel: (nuevoNivel: number) => void;
   onVolver: () => void;
 }
 
-export default function PantallaCarrera({ onVolver }: PantallaCarreraProps) {
-  const { vidas, proximaVidaEn, nivel, cargado, perderVida, avanzarNivel } = usePerfilJuego();
+export default function PantallaCarrera({
+  vidas,
+  proximaVidaEn,
+  ahora,
+  nivel,
+  cargado,
+  perderVida,
+  avanzarNivel,
+  onVolver,
+}: PantallaCarreraProps) {
   const [seleccion, setSeleccion] = useState<number | null>(null);
-  const [ahora, setAhora] = useState(Date.now());
 
   const [pool, setPool] = useState<Pregunta[] | null>(null);
   const dificultadKey = dificultadKeyPorNivel(nivel);
@@ -36,12 +50,6 @@ export default function PantallaCarrera({ onVolver }: PantallaCarreraProps) {
     () => (pool ? obtenerPreguntaDePool(nivel, pool) : null),
     [nivel, pool]
   );
-
-  useEffect(() => {
-    if (vidas > 0) return;
-    const id = setInterval(() => setAhora(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [vidas]);
 
   if (!cargado || !pregunta) {
     return (
