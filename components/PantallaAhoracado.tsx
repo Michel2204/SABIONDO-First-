@@ -95,6 +95,7 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
     const nuevoEstado: EstadoAhorcado = {
       ...estadoJuego,
       palabra,
+      dificultad,
       letrasProbadas: [...letrasProbadas, letra],
       errores: acierto ? errores : errores + 1,
       turno: esCreador ? salaActual.oponente_id! : salaActual.creador_id, // pasa el turno siempre, acierte o no
