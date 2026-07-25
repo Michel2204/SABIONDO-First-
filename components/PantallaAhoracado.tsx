@@ -16,6 +16,15 @@ import { supabase } from "@/lib/supabaseClient";
 
 const ALFABETO = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
+function normalizarPalabra(palabra: string) {
+  return palabra
+    .toUpperCase()
+    .normalize("NFD")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0300-\u036f]/g, "") // saca los tildes, deja la Ñ intacta
+    .replace(/Ü/g, "U"); // opcional: si no querés diéresis tampoco
+}
+
 interface PantallaAhorcadoProps {
   salaInicial: Sala;
   usuarioId: string;
@@ -37,7 +46,7 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
       setInicializando(true);
       obtenerPalabraAleatoria(dificultad).then(async (palabra) => {
         const nuevoEstado: EstadoAhorcado = {
-          palabra,
+          palabra: normalizarPalabra(palabra),
           dificultad,
           letrasProbadas: [],
           errores: 0,
