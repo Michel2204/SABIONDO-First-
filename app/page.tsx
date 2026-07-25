@@ -9,10 +9,13 @@ import TarjetaPregunta from "@/components/TarjetaPregunta";
 import PantallaResultado from "@/components/PantallaResultado";
 import PantallaCarrera from "@/components/PantallaCarrera";
 import PantallaSalas from "@/components/PantallaSalas";
+import PantallaAhorcado from "@/components/PantallaAhoracado";
+import SelectorDificultadAhorcado from "@/components/SelectorDificultadAhorcado";
 import { obtenerPreguntasClasico } from "@/lib/preguntasApi";
 import { useAuth } from "@/lib/useAuth";
 import { Sala } from "@/lib/salas";
 import { Categoria, Modo, Pantalla, Pregunta } from "@/lib/types";
+import { DificultadAhorcado } from "@/lib/ahorcadoApi";
 import PantallaDuelo from "@/components/PantallaDuelo";
 
 const PREGUNTAS_POR_PARTIDA = 6;
@@ -21,13 +24,14 @@ const VIDAS_INICIALES = 3;
 export default function Home() {
   const { usuario, logueado } = useAuth();
   const [pantalla, setPantalla] = useState<Pantalla>("menu");
-  const [, setModo] = useState<Modo>("clasico");
+  const [modo, setModo] = useState<Modo>("clasico");
   const [vidas, setVidas] = useState(VIDAS_INICIALES);
   const [puntaje, setPuntaje] = useState(0);
   const [totalRespondidas, setTotalRespondidas] = useState(0);
   const [categoriaActual, setCategoriaActual] = useState<Categoria | null>(null);
   const [preguntaActual, setPreguntaActual] = useState<Pregunta | null>(null);
   const [salaActual, setSalaActual] = useState<Sala | null>(null);
+  const [dificultadAhorcado, setDificultadAhorcado] = useState<DificultadAhorcado>("facil");
 
   function iniciarPartida(m: Modo) {
     setModo(m);
@@ -46,10 +50,24 @@ export default function Home() {
       return;
     }
 
+    if (m === "ahorcado") {
+      if (!logueado) {
+        alert("Para jugar Ahorcado primero iniciá sesión con Google");
+        return;
+      }
+      setPantalla("ahorcado-dificultad");
+      return;
+    }
+
     setVidas(VIDAS_INICIALES);
     setPuntaje(0);
     setTotalRespondidas(0);
     setPantalla("rueda");
+  }
+
+  function elegirDificultadAhorcado(dificultad: DificultadAhorcado) {
+    setDificultadAhorcado(dificultad);
+    setPantalla("salas");
   }
 
   async function elegirCategoria(categoria: Categoria) {
@@ -81,7 +99,7 @@ export default function Home() {
 
   function salaLista(sala: Sala) {
     setSalaActual(sala);
-    setPantalla("duelo");
+    setPantalla(modo === "ahorcado" ? "ahorcado" : "duelo");
   }
 
   function volverAlMenu() {
@@ -99,20 +117,40 @@ export default function Home() {
 
           {pantalla === "carrera" && (
             <PantallaCarrera key="carrera" onVolver={volverAlMenu} />
-          )}  
-            {pantalla === "duelo" && salaActual && usuario && (
-              <PantallaDuelo
-                key="duelo"
-                salaInicial={salaActual}
-                usuarioId={usuario.id}
-                onSalir={volverAlMenu}
-  />
-)}
+          )}
+
+          {pantalla === "ahorcado-dificultad" && (
+            <SelectorDificultadAhorcado
+              key="ahorcado-dificultad"
+              onElegir={elegirDificultadAhorcado}
+              onVolver={volverAlMenu}
+            />
+          )}
+
+          {pantalla === "duelo" && salaActual && usuario && (
+            <PantallaDuelo
+              key="duelo"
+              salaInicial={salaActual}
+              usuarioId={usuario.id}
+              onSalir={volverAlMenu}
+            />
+          )}
+
+          {pantalla === "ahorcado" && salaActual && usuario && (
+            <PantallaAhorcado
+              key="ahorcado"
+              salaInicial={salaActual}
+              usuarioId={usuario.id}
+              dificultad={dificultadAhorcado}
+              onSalir={volverAlMenu}
+            />
+          )}
 
           {pantalla === "salas" && usuario && (
             <PantallaSalas
               key="salas"
               usuarioId={usuario.id}
+              juego={modo === "ahorcado" ? "ahorcado" : "trivia"}
               onSalaLista={salaLista}
               onVolver={volverAlMenu}
             />

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Sala,
+  Juego,
   crearSalaPublica,
   crearSalaPrivada,
   listarSalasPublicas,
@@ -14,11 +15,12 @@ import {
 
 interface PantallaSalasProps {
   usuarioId: string;
+  juego?: Juego;
   onSalaLista: (sala: Sala) => void;
   onVolver: () => void;
 }
 
-export default function PantallaSalas({ usuarioId, onSalaLista, onVolver }: PantallaSalasProps) {
+export default function PantallaSalas({ usuarioId, juego = "trivia", onSalaLista, onVolver }: PantallaSalasProps) {
   const [salasPublicas, setSalasPublicas] = useState<Sala[]>([]);
   const [codigoIngresado, setCodigoIngresado] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -26,11 +28,11 @@ export default function PantallaSalas({ usuarioId, onSalaLista, onVolver }: Pant
 
   useEffect(() => {
     cargarSalas();
-  }, []);
+  }, [juego]);
 
   async function cargarSalas() {
     try {
-      const salas = await listarSalasPublicas();
+      const salas = await listarSalasPublicas(juego);
       setSalasPublicas(salas);
     } catch {
       setError("No se pudieron cargar las salas");
@@ -41,7 +43,7 @@ export default function PantallaSalas({ usuarioId, onSalaLista, onVolver }: Pant
     setCargando(true);
     setError(null);
     try {
-      const sala = await buscarRival(usuarioId);
+      const sala = await buscarRival(usuarioId, juego);
       onSalaLista(sala);
     } catch {
       setError("No se pudo buscar rival, probá de nuevo");
@@ -54,7 +56,7 @@ export default function PantallaSalas({ usuarioId, onSalaLista, onVolver }: Pant
     setCargando(true);
     setError(null);
     try {
-      const sala = await crearSalaPrivada(usuarioId);
+      const sala = await crearSalaPrivada(usuarioId, juego);
       onSalaLista(sala);
     } catch {
       setError("No se pudo crear la sala privada");
@@ -94,6 +96,8 @@ export default function PantallaSalas({ usuarioId, onSalaLista, onVolver }: Pant
     }
   }
 
+  const titulo = juego === "ahorcado" ? "AHORCADO 1 vs 1" : "DUELO 1 vs 1";
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 12 }}
@@ -111,7 +115,7 @@ export default function PantallaSalas({ usuarioId, onSalaLista, onVolver }: Pant
         </button>
       </div>
 
-      <h2 className="font-display text-3xl text-crema mb-6 text-center">DUELO 1 vs 1</h2>
+      <h2 className="font-display text-3xl text-crema mb-6 text-center">{titulo}</h2>
 
       {error && (
         <p className="font-body text-linea-rojo text-sm mb-4 text-center">{error}</p>
