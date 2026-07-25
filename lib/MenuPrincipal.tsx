@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Modo } from "@/lib/types";
-import BotonGoogle from "./BotonGoogle";
+import BotonGoogle from "@/components/BotonGoogle";
 
 interface MenuPrincipalProps {
   onSeleccionarModo: (modo: Modo) => void;
