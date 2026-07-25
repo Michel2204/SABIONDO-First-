@@ -6,7 +6,7 @@ export interface EstadoAhorcado {
   palabra: string;
   dificultad: DificultadAhorcado;
   letrasProbadas: string[];
-  errores: number;
+  erroresPorJugador: Record<string, number>; // usuarioId -> cantidad de errores
   turno: string; // usuarioId de quien le toca adivinar
 }
 

@@ -36,6 +36,7 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
   const { sala, rivalConectado, cargado } = useSala(salaInicial.id, usuarioId);
   const salaActual = sala ?? salaInicial;
   const esCreador = salaActual.creador_id === usuarioId;
+  const rivalId = esCreador ? salaActual.oponente_id : salaActual.creador_id;
   const estadoJuego = salaActual.estado_juego as EstadoAhorcado | null;
 
   const [inicializando, setInicializando] = useState(false);
@@ -49,7 +50,10 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
           palabra: normalizarPalabra(palabra),
           dificultad,
           letrasProbadas: [],
-          errores: 0,
+          erroresPorJugador: {
+            [salaActual.creador_id]: 0,
+            [salaActual.oponente_id!]: 0,
+          },
           turno: salaActual.creador_id, // arranca el creador
         };
         await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
@@ -82,31 +86,56 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
     );
   }
 
-  const { palabra, letrasProbadas, errores, turno } = estadoJuego;
+  const { palabra, letrasProbadas, erroresPorJugador, turno } = estadoJuego;
+  const misErrores = erroresPorJugador[usuarioId] ?? 0;
+  const erroresRival = rivalId ? erroresPorJugador[rivalId] ?? 0 : 0;
+  const yoEliminado = misErrores >= MAX_ERRORES;
+  const rivalEliminado = erroresRival >= MAX_ERRORES;
+
   const esMiTurno = turno === usuarioId;
   const gano = palabraCompleta(palabra, letrasProbadas);
-  const perdio = errores >= MAX_ERRORES;
-  const terminado = gano || perdio;
+  const ambosEliminados = yoEliminado && rivalEliminado;
+  const terminado = gano || ambosEliminados;
 
   async function elegirLetra(letra: string) {
-    if (!esMiTurno || terminado || letrasProbadas.includes(letra)) return;
+    if (!esMiTurno || terminado || yoEliminado || letrasProbadas.includes(letra) || !rivalId) return;
 
     const acierto = palabra.includes(letra);
+    const misErroresNuevo = acierto ? misErrores : misErrores + 1;
+    const yoQuedoEliminado = misErroresNuevo >= MAX_ERRORES;
+
+    const nuevoErroresPorJugador = {
+      ...erroresPorJugador,
+      [usuarioId]: misErroresNuevo,
+    };
+
+    // Pasa el turno al rival, salvo que el rival ya esté eliminado y yo no —
+    // en ese caso sigo jugando solo.
+    const siguienteTurno = rivalEliminado && !yoQuedoEliminado ? usuarioId : rivalId;
+
     const nuevoEstado: EstadoAhorcado = {
       ...estadoJuego,
       palabra,
       dificultad,
       letrasProbadas: [...letrasProbadas, letra],
-      errores: acierto ? errores : errores + 1,
-      turno: esCreador ? salaActual.oponente_id! : salaActual.creador_id, // pasa el turno siempre, acierte o no
+      erroresPorJugador: nuevoErroresPorJugador,
+      turno: siguienteTurno,
     };
 
     await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
 
     const seCompleto = palabraCompleta(palabra, nuevoEstado.letrasProbadas);
-    if (seCompleto || nuevoEstado.errores >= MAX_ERRORES) {
+    const quedanAmbosEliminados = yoQuedoEliminado && rivalEliminado;
+    if (seCompleto || quedanAmbosEliminados) {
       await finalizarSala(salaActual.id);
     }
+  }
+
+  let mensajeFinal = "";
+  if (gano) {
+    mensajeFinal = "¡La adivinaron! 🎉";
+  } else if (ambosEliminados) {
+    mensajeFinal = `Se les acabaron los intentos a los dos 😅 (era "${palabra}")`;
   }
 
   return (
@@ -116,7 +145,16 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
           ‹ SALIR
         </button>
         <span className="font-heading text-xs uppercase tracking-widest text-crema/60">
-          {dificultad} · errores: {errores}/{MAX_ERRORES}
+          {dificultad}
+        </span>
+      </div>
+
+      <div className="flex justify-between w-full text-xs font-heading uppercase tracking-widest">
+        <span className={clsx(yoEliminado ? "text-linea-rojo" : "text-crema/70")}>
+          vos: {misErrores}/{MAX_ERRORES} {yoEliminado && "· eliminado"}
+        </span>
+        <span className={clsx(rivalEliminado ? "text-linea-rojo" : "text-crema/70")}>
+          rival: {erroresRival}/{MAX_ERRORES} {rivalEliminado && "· eliminado"}
         </span>
       </div>
 
@@ -133,7 +171,11 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
 
       {!terminado && (
         <p className="font-body text-sm text-crema/80">
-          {esMiTurno ? "Tu turno — elegí una letra" : "Turno del rival, esperá..."}
+          {yoEliminado
+            ? "Te quedaste sin intentos — esperá a ver si tu rival la adivina."
+            : esMiTurno
+            ? "Tu turno — elegí una letra"
+            : "Turno del rival, esperá..."}
         </p>
       )}
 
@@ -144,7 +186,7 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
           return (
             <button
               key={letra}
-              disabled={usada || !esMiTurno || terminado}
+              disabled={usada || !esMiTurno || terminado || yoEliminado}
               onClick={() => elegirLetra(letra)}
               className={clsx(
                 "w-8 h-8 rounded-md font-heading text-sm border-2 transition-colors",
@@ -167,7 +209,7 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
             className="flex flex-col items-center gap-4 mt-4"
           >
             <p className={clsx("text-2xl font-bold", gano ? "text-green-500" : "text-red-500")}>
-              {gano ? "¡La adivinaron! 🎉" : `Se les acabaron los intentos 😅 (era "${palabra}")`}
+              {mensajeFinal}
             </p>
             <button
               onClick={onSalir}
