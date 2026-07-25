@@ -86,7 +86,8 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
     );
   }
 
-  const { palabra, letrasProbadas, erroresPorJugador, turno } = estadoJuego;
+  const { palabra, letrasProbadas, turno } = estadoJuego;
+  const erroresPorJugador = estadoJuego.erroresPorJugador ?? {};
   const misErrores = erroresPorJugador[usuarioId] ?? 0;
   const erroresRival = rivalId ? erroresPorJugador[rivalId] ?? 0 : 0;
   const yoEliminado = misErrores >= MAX_ERRORES;
