@@ -15,6 +15,7 @@ import EsperaVidas from "@/components/EsperaVidas";
 import { obtenerPreguntasClasico } from "@/lib/preguntasApi";
 import { useAuth } from "@/lib/useAuth";
 import { usePerfilJuego } from "@/lib/usePerfilJuego";
+import { useVidasClasico } from "@/lib/useVidasClasico";
 import { VIDAS_MAX } from "@/lib/vidasCarrera";
 import { Sala } from "@/lib/salas";
 import { Categoria, Modo, Pantalla, Pregunta } from "@/lib/types";
@@ -25,7 +26,12 @@ const PREGUNTAS_POR_PARTIDA = 6;
 
 export default function Home() {
   const { usuario, logueado } = useAuth();
-  const { vidas, proximaVidaEn, nivel, cargado: perfilCargado, perderVida, avanzarNivel } = usePerfilJuego();
+
+  // Vidas de Carrera (propias)
+  const { vidas: vidasCarrera, proximaVidaEn: proximaCarreraEn, nivel, cargado: carreraCargado, perderVida: perderVidaCarrera, avanzarNivel } = usePerfilJuego();
+
+  // Vidas de Clásico (propias, independientes de Carrera)
+  const { vidas: vidasClasico, proximaVidaEn: proximaClasicoEn, cargado: clasicoCargado, perderVida: perderVidaClasico } = useVidasClasico();
 
   const [pantalla, setPantalla] = useState<Pantalla>("menu");
   const [modo, setModo] = useState<Modo>("clasico");
@@ -37,15 +43,18 @@ export default function Home() {
   const [dificultadAhorcado, setDificultadAhorcado] = useState<DificultadAhorcado>("facil");
   const [ahora, setAhora] = useState(Date.now());
 
-  // Tick del reloj de espera de vidas, compartido por Clásico y Carrera
+  // Tick del reloj de espera de vidas, sirve para el pool que esté regenerando (Carrera o Clásico)
   useEffect(() => {
-    if (!perfilCargado || vidas >= VIDAS_MAX || proximaVidaEn === null) return;
+    const necesitaTick =
+      (carreraCargado && vidasCarrera < VIDAS_MAX && proximaCarreraEn !== null) ||
+      (clasicoCargado && vidasClasico < VIDAS_MAX && proximaClasicoEn !== null);
+    if (!necesitaTick) return;
     const id = setInterval(() => setAhora(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [perfilCargado, vidas, proximaVidaEn]);
+  }, [carreraCargado, vidasCarrera, proximaCarreraEn, clasicoCargado, vidasClasico, proximaClasicoEn]);
 
-  const sinVidas = perfilCargado && vidas <= 0;
-  const msRestantes = proximaVidaEn ? proximaVidaEn - ahora : 0;
+  const sinVidasClasico = clasicoCargado && vidasClasico <= 0;
+  const msRestantesClasico = proximaClasicoEn ? proximaClasicoEn - ahora : 0;
 
   function iniciarPartida(m: Modo) {
     setModo(m);
@@ -96,13 +105,13 @@ export default function Home() {
     if (correcta) {
       setPuntaje((p) => p + 1);
     } else {
-      perderVida();
+      perderVidaClasico();
     }
   }
 
   function siguientePregunta() {
     const totalActual = totalRespondidas;
-    if (vidas <= 0 || totalActual >= PREGUNTAS_POR_PARTIDA) {
+    if (vidasClasico <= 0 || totalActual >= PREGUNTAS_POR_PARTIDA) {
       setPantalla("resultado");
     } else {
       setPantalla("rueda");
@@ -130,12 +139,12 @@ export default function Home() {
           {pantalla === "carrera" && (
             <PantallaCarrera
               key="carrera"
-              vidas={vidas}
-              proximaVidaEn={proximaVidaEn}
+              vidas={vidasCarrera}
+              proximaVidaEn={proximaCarreraEn}
               ahora={ahora}
               nivel={nivel}
-              cargado={perfilCargado}
-              perderVida={perderVida}
+              cargado={carreraCargado}
+              perderVida={perderVidaCarrera}
               avanzarNivel={avanzarNivel}
               onVolver={volverAlMenu}
             />
@@ -179,12 +188,12 @@ export default function Home() {
           )}
 
           {pantalla === "rueda" && (
-            sinVidas ? (
-              <EsperaVidas key="espera-clasico-rueda" msRestantes={msRestantes} onVolver={volverAlMenu} />
+            sinVidasClasico ? (
+              <EsperaVidas key="espera-clasico-rueda" msRestantes={msRestantesClasico} onVolver={volverAlMenu} />
             ) : (
               <RuedaCategorias
                 key="rueda"
-                vidas={vidas}
+                vidas={vidasClasico}
                 onCategoriaElegida={elegirCategoria}
                 onVolver={volverAlMenu}
               />
@@ -192,14 +201,14 @@ export default function Home() {
           )}
 
           {pantalla === "pregunta" && categoriaActual && preguntaActual && (
-            sinVidas ? (
-              <EsperaVidas key="espera-clasico-pregunta" msRestantes={msRestantes} onVolver={volverAlMenu} />
+            sinVidasClasico ? (
+              <EsperaVidas key="espera-clasico-pregunta" msRestantes={msRestantesClasico} onVolver={volverAlMenu} />
             ) : (
               <TarjetaPregunta
                 key="pregunta"
                 categoria={categoriaActual}
                 pregunta={preguntaActual}
-                vidas={vidas}
+                vidas={vidasClasico}
                 onResponder={responder}
                 onSiguiente={siguientePregunta}
                 onSalir={volverAlMenu}
@@ -212,7 +221,7 @@ export default function Home() {
               key="resultado"
               puntaje={puntaje}
               total={totalRespondidas}
-              vidas={vidas}
+              vidas={vidasClasico}
               onJugarDeNuevo={volverAlMenu}
             />
           )}
