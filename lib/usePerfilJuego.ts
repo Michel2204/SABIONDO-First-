@@ -16,8 +16,8 @@ interface EstadoPerfil {
 interface FilaUsuario {
   id: string;
   vidas: number;
-  proxima_vida_en: string | null;
-  nivel_carrera: number;
+  proxima_vida_at: string | null;
+  progreso_carrera: number;
   gemas: number;
 }
 
@@ -61,21 +61,29 @@ export function usePerfilJuego() {
 
     async function cargar() {
       if (logueado && usuario) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("usuarios")
-          .select("id, vidas, proxima_vida_en, nivel_carrera, gemas")
+          .select("id, vidas, proxima_vida_at, progreso_carrera, gemas")
           .eq("id", usuario.id)
           .maybeSingle<FilaUsuario>();
 
         if (cancelado) return;
 
+        if (error) {
+          console.error("Error cargando perfil de usuario:", error);
+          // No pisamos el progreso real: si falla la consulta, no reseteamos vidas.
+          // Simplemente no marcamos como "cargado" para que la pantalla espere,
+          // en vez de arrancar de cero con datos falsos.
+          return;
+        }
+
         if (!data) {
-          // Primera vez que este usuario entra: crea su fila con valores iniciales
+          // Primera vez real que este usuario entra: crea su fila con valores iniciales
           await supabase.from("usuarios").upsert({
             id: usuario.id,
             vidas: VIDAS_MAX,
-            proxima_vida_en: null,
-            nivel_carrera: 1,
+            proxima_vida_at: null,
+            progreso_carrera: 1,
             gemas: 0,
           });
           if (!cancelado) {
@@ -85,7 +93,7 @@ export function usePerfilJuego() {
           return;
         }
 
-        const proximaMs = data.proxima_vida_en ? new Date(data.proxima_vida_en).getTime() : null;
+        const proximaMs = data.proxima_vida_at ? new Date(data.proxima_vida_at).getTime() : null;
         const resuelto = resolverRegeneracion(data.vidas, proximaMs);
 
         if (resuelto.vidas !== data.vidas || resuelto.proximaVidaEn !== proximaMs) {
@@ -93,7 +101,7 @@ export function usePerfilJuego() {
             .from("usuarios")
             .update({
               vidas: resuelto.vidas,
-              proxima_vida_en: resuelto.proximaVidaEn ? new Date(resuelto.proximaVidaEn).toISOString() : null,
+              proxima_vida_at: resuelto.proximaVidaEn ? new Date(resuelto.proximaVidaEn).toISOString() : null,
             })
             .eq("id", usuario.id);
         }
@@ -102,7 +110,7 @@ export function usePerfilJuego() {
           setEstado({
             vidas: resuelto.vidas,
             proximaVidaEn: resuelto.proximaVidaEn,
-            nivel: data.nivel_carrera,
+            nivel: data.progreso_carrera,
             gemas: data.gemas,
           });
           setCargado(true);
@@ -137,7 +145,7 @@ export function usePerfilJuego() {
         if (logueado && usuario) {
           supabase
             .from("usuarios")
-            .update({ vidas, proxima_vida_en: proximaVidaEn ? new Date(proximaVidaEn).toISOString() : null })
+            .update({ vidas, proxima_vida_at: proximaVidaEn ? new Date(proximaVidaEn).toISOString() : null })
             .eq("id", usuario.id);
         } else {
           guardarEstadoVidas({ vidas, proximaVidaEn });
@@ -160,7 +168,7 @@ export function usePerfilJuego() {
       if (logueado && usuario) {
         supabase
           .from("usuarios")
-          .update({ vidas, proxima_vida_en: proximaVidaEn ? new Date(proximaVidaEn).toISOString() : null })
+          .update({ vidas, proxima_vida_at: proximaVidaEn ? new Date(proximaVidaEn).toISOString() : null })
           .eq("id", usuario.id);
       } else {
         guardarEstadoVidas({ vidas, proximaVidaEn });
@@ -175,7 +183,7 @@ export function usePerfilJuego() {
       setEstado((actual) => ({ ...actual, nivel: nuevoNivel }));
 
       if (logueado && usuario) {
-        supabase.from("usuarios").update({ nivel_carrera: nuevoNivel }).eq("id", usuario.id);
+        supabase.from("usuarios").update({ progreso_carrera: nuevoNivel }).eq("id", usuario.id);
       } else {
         guardarProgresoCarrera(nuevoNivel);
       }
