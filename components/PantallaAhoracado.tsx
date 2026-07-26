@@ -105,6 +105,8 @@ export default function PantallaAhorcado({
   const { palabra, letrasProbadas, turno } = estadoJuego;
   const erroresPorJugador = estadoJuego.erroresPorJugador ?? {};
   const arriesgoUsado = estadoJuego.arriesgoUsado ?? {};
+  const ganadorIdActual = estadoJuego.ganadorId ?? null;
+  const ganadorNombreActual = estadoJuego.ganadorNombre ?? null;
   const misErrores = erroresPorJugador[usuarioId] ?? 0;
   const erroresRival = rivalId ? erroresPorJugador[rivalId] ?? 0 : 0;
   const yoEliminado = misErrores >= MAX_ERRORES;
@@ -145,8 +147,8 @@ export default function PantallaAhorcado({
       erroresPorJugador: nuevoErroresPorJugador,
       arriesgoUsado,
       turno: siguienteTurno,
-      ganadorId: seCompleto ? usuarioId : estadoJuego.ganadorId ?? null,
-      ganadorNombre: seCompleto ? nombreJugador : estadoJuego.ganadorNombre ?? null,
+      ganadorId: seCompleto ? usuarioId : ganadorIdActual,
+      ganadorNombre: seCompleto ? nombreJugador : ganadorNombreActual,
     };
 
     await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
@@ -213,7 +215,7 @@ export default function PantallaAhorcado({
 
   let mensajeFinal = "";
   if (gano) {
-    mensajeFinal = estadoJuego.ganadorNombre ? `¡${estadoJuego.ganadorNombre} ganó! 🎉` : "¡La adivinaron! 🎉";
+    mensajeFinal = ganadorNombreActual ? `¡${ganadorNombreActual} ganó! 🎉` : "¡La adivinaron! 🎉";
   } else if (ambosEliminados) {
     mensajeFinal = `Se les acabaron los intentos a los dos 😅 (era "${palabra}")`;
   }
