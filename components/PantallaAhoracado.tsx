@@ -28,11 +28,18 @@ function normalizarPalabra(palabra: string) {
 interface PantallaAhorcadoProps {
   salaInicial: Sala;
   usuarioId: string;
+  nombreJugador: string; // nombre visible del usuario logueado (para mostrar quién ganó)
   dificultad: DificultadAhorcado; // elegida en el lobby antes de crear la sala
   onSalir: () => void;
 }
 
-export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, onSalir }: PantallaAhorcadoProps) {
+export default function PantallaAhorcado({
+  salaInicial,
+  usuarioId,
+  nombreJugador,
+  dificultad,
+  onSalir,
+}: PantallaAhorcadoProps) {
   const { sala, rivalConectado, cargado } = useSala(salaInicial.id, usuarioId);
   const salaActual = sala ?? salaInicial;
   const esCreador = salaActual.creador_id === usuarioId;
@@ -40,6 +47,9 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
   const estadoJuego = salaActual.estado_juego as EstadoAhorcado | null;
 
   const [inicializando, setInicializando] = useState(false);
+  const [arriesgando, setArriesgando] = useState(false);
+  const [palabraArriesgada, setPalabraArriesgada] = useState("");
+  const [enviandoArriesgo, setEnviandoArriesgo] = useState(false);
 
   // Solo el creador elige la palabra inicial, una vez que el rival ya está en la sala
   useEffect(() => {
@@ -54,7 +64,13 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
             [salaActual.creador_id]: 0,
             [salaActual.oponente_id!]: 0,
           },
+          arriesgoUsado: {
+            [salaActual.creador_id]: false,
+            [salaActual.oponente_id!]: false,
+          },
           turno: salaActual.creador_id, // arranca el creador
+          ganadorId: null,
+          ganadorNombre: null,
         };
         await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
       });
@@ -88,15 +104,20 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
 
   const { palabra, letrasProbadas, turno } = estadoJuego;
   const erroresPorJugador = estadoJuego.erroresPorJugador ?? {};
+  const arriesgoUsado = estadoJuego.arriesgoUsado ?? {};
   const misErrores = erroresPorJugador[usuarioId] ?? 0;
   const erroresRival = rivalId ? erroresPorJugador[rivalId] ?? 0 : 0;
   const yoEliminado = misErrores >= MAX_ERRORES;
   const rivalEliminado = erroresRival >= MAX_ERRORES;
+  const yoArriesgoUsado = arriesgoUsado[usuarioId] ?? false;
+  const rivalArriesgoUsado = rivalId ? arriesgoUsado[rivalId] ?? false : false;
 
   const esMiTurno = turno === usuarioId;
   const gano = palabraCompleta(palabra, letrasProbadas);
   const ambosEliminados = yoEliminado && rivalEliminado;
   const terminado = gano || ambosEliminados;
+
+  const puedeArriesgar = esMiTurno && !terminado && !yoEliminado && !yoArriesgoUsado && !!rivalId;
 
   async function elegirLetra(letra: string) {
     if (!esMiTurno || terminado || yoEliminado || letrasProbadas.includes(letra) || !rivalId) return;
@@ -104,6 +125,8 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
     const acierto = palabra.includes(letra);
     const misErroresNuevo = acierto ? misErrores : misErrores + 1;
     const yoQuedoEliminado = misErroresNuevo >= MAX_ERRORES;
+    const nuevasLetrasProbadas = [...letrasProbadas, letra];
+    const seCompleto = palabraCompleta(palabra, nuevasLetrasProbadas);
 
     const nuevoErroresPorJugador = {
       ...erroresPorJugador,
@@ -118,23 +141,79 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
       ...estadoJuego,
       palabra,
       dificultad,
-      letrasProbadas: [...letrasProbadas, letra],
+      letrasProbadas: nuevasLetrasProbadas,
       erroresPorJugador: nuevoErroresPorJugador,
+      arriesgoUsado,
       turno: siguienteTurno,
+      ganadorId: seCompleto ? usuarioId : estadoJuego.ganadorId ?? null,
+      ganadorNombre: seCompleto ? nombreJugador : estadoJuego.ganadorNombre ?? null,
     };
 
     await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
 
-    const seCompleto = palabraCompleta(palabra, nuevoEstado.letrasProbadas);
     const quedanAmbosEliminados = yoQuedoEliminado && rivalEliminado;
     if (seCompleto || quedanAmbosEliminados) {
       await finalizarSala(salaActual.id);
     }
   }
 
+  async function arriesgarPalabra() {
+    if (!puedeArriesgar || !rivalId || enviandoArriesgo) return;
+    const intento = normalizarPalabra(palabraArriesgada.trim());
+    if (!intento) return;
+
+    setEnviandoArriesgo(true);
+    const acierto = intento === palabra;
+    const nuevoArriesgoUsado = { ...arriesgoUsado, [usuarioId]: true };
+
+    if (acierto) {
+      const todasLasLetras = Array.from(new Set(palabra.split("")));
+      const nuevasLetrasProbadas = Array.from(new Set([...letrasProbadas, ...todasLasLetras]));
+
+      const nuevoEstado: EstadoAhorcado = {
+        ...estadoJuego,
+        palabra,
+        dificultad,
+        letrasProbadas: nuevasLetrasProbadas,
+        erroresPorJugador,
+        arriesgoUsado: nuevoArriesgoUsado,
+        turno,
+        ganadorId: usuarioId,
+        ganadorNombre: nombreJugador,
+      };
+
+      await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
+      await finalizarSala(salaActual.id);
+    } else {
+      const nuevoErroresPorJugador = { ...erroresPorJugador, [usuarioId]: MAX_ERRORES };
+      const siguienteTurno = rivalEliminado ? usuarioId : rivalId;
+
+      const nuevoEstado: EstadoAhorcado = {
+        ...estadoJuego,
+        palabra,
+        dificultad,
+        letrasProbadas,
+        erroresPorJugador: nuevoErroresPorJugador,
+        arriesgoUsado: nuevoArriesgoUsado,
+        turno: siguienteTurno,
+      };
+
+      await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
+
+      if (rivalEliminado) {
+        // yo también quedé en MAX_ERRORES recién: los dos afuera, se cierra la partida
+        await finalizarSala(salaActual.id);
+      }
+    }
+
+    setPalabraArriesgada("");
+    setArriesgando(false);
+    setEnviandoArriesgo(false);
+  }
+
   let mensajeFinal = "";
   if (gano) {
-    mensajeFinal = "¡La adivinaron! 🎉";
+    mensajeFinal = estadoJuego.ganadorNombre ? `¡${estadoJuego.ganadorNombre} ganó! 🎉` : "¡La adivinaron! 🎉";
   } else if (ambosEliminados) {
     mensajeFinal = `Se les acabaron los intentos a los dos 😅 (era "${palabra}")`;
   }
@@ -152,10 +231,10 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
 
       <div className="flex justify-between w-full text-xs font-heading uppercase tracking-widest">
         <span className={clsx(yoEliminado ? "text-linea-rojo" : "text-crema/70")}>
-          vos: {misErrores}/{MAX_ERRORES} {yoEliminado && "· eliminado"}
+          vos: {misErrores}/{MAX_ERRORES} {yoEliminado && "· eliminado"} {!yoEliminado && yoArriesgoUsado && "· arriesgó"}
         </span>
         <span className={clsx(rivalEliminado ? "text-linea-rojo" : "text-crema/70")}>
-          rival: {erroresRival}/{MAX_ERRORES} {rivalEliminado && "· eliminado"}
+          rival: {erroresRival}/{MAX_ERRORES} {rivalEliminado && "· eliminado"} {!rivalEliminado && rivalArriesgoUsado && "· arriesgó"}
         </span>
       </div>
 
@@ -201,6 +280,50 @@ export default function PantallaAhorcado({ salaInicial, usuarioId, dificultad, o
           );
         })}
       </div>
+
+      {puedeArriesgar && (
+        <div className="w-full flex flex-col items-center gap-2 mt-2">
+          {!arriesgando ? (
+            <button
+              onClick={() => setArriesgando(true)}
+              className="font-heading text-xs uppercase tracking-widest border-2 border-linea-violeta text-linea-violeta rounded-lg px-4 py-2"
+            >
+              🎯 Arriesgar la palabra (una sola vez)
+            </button>
+          ) : (
+            <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+              <input
+                value={palabraArriesgada}
+                onChange={(e) => setPalabraArriesgada(e.target.value.toUpperCase())}
+                placeholder="ESCRIBÍ LA PALABRA"
+                autoFocus
+                className="w-full bg-crema text-tinta font-heading text-center tracking-widest rounded-xl px-3 py-2 uppercase"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={arriesgarPalabra}
+                  disabled={enviandoArriesgo || !palabraArriesgada.trim()}
+                  className="bg-linea-violeta text-crema font-heading text-xs rounded-lg px-4 py-2 disabled:opacity-50"
+                >
+                  CONFIRMAR
+                </button>
+                <button
+                  onClick={() => {
+                    setArriesgando(false);
+                    setPalabraArriesgada("");
+                  }}
+                  className="border border-dorado/60 text-dorado-claro font-heading text-xs rounded-lg px-4 py-2"
+                >
+                  CANCELAR
+                </button>
+              </div>
+              <p className="font-body text-[11px] text-crema/50 text-center">
+                Si acertás, ganás al toque. Si fallás, perdés todos tus intentos.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <AnimatePresence>
         {terminado && (

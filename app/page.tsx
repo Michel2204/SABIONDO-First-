@@ -26,7 +26,9 @@ const PREGUNTAS_POR_PARTIDA = 6;
 
 export default function Home() {
   const { usuario, logueado } = useAuth();
-
+  const nombreJugador = usuario
+    ? (usuario.user_metadata?.full_name as string | undefined) ?? usuario.email ?? "Jugador"
+    : "Jugador";
   // Vidas de Carrera (propias)
   const { vidas: vidasCarrera, proximaVidaEn: proximaCarreraEn, nivel, cargado: carreraCargado, perderVida: perderVidaCarrera, avanzarNivel } = usePerfilJuego();
 
@@ -172,6 +174,7 @@ export default function Home() {
               key="ahorcado"
               salaInicial={salaActual}
               usuarioId={usuario.id}
+              nombreJugador={nombreJugador}
               dificultad={dificultadAhorcado}
               onSalir={volverAlMenu}
             />

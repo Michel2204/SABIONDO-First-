@@ -7,7 +7,10 @@ export interface EstadoAhorcado {
   dificultad: DificultadAhorcado;
   letrasProbadas: string[];
   erroresPorJugador: Record<string, number>; // usuarioId -> cantidad de errores
+  arriesgoUsado: Record<string, boolean>; // usuarioId -> si ya usó su intento de arriesgar la palabra
   turno: string; // usuarioId de quien le toca adivinar
+  ganadorId?: string | null;
+  ganadorNombre?: string | null;
 }
 
 const MAX_ERRORES = 6;

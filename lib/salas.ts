@@ -33,7 +33,7 @@ function generarCodigo(): string {
 function estadoInicialPorJuego(juego: Juego): unknown {
   switch (juego) {
     case "ahorcado":
-      return { palabra: null, letrasProbadas: [], erroresPorJugador: {}, turno: null };
+      return { palabra: null, letrasProbadas: [], erroresPorJugador: {}, arriesgoUsado: {}, turno: null };
     case "damas":
       return { tablero: null, turno: null }; // se completa en la Fase J3
     case "ajedrez":
