@@ -130,6 +130,13 @@ export default function Home() {
     setPantalla("menu");
   }
 
+  // Cuando alguien no quiere revancha en Ahorcado: vuelve a buscar sala,
+  // con la misma dificultad ya elegida, sin pasar por el menú principal.
+  function nuevaBusquedaAhorcado() {
+    setSalaActual(null);
+    setPantalla("salas");
+  }
+
   return (
     <main className="min-h-screen w-full flex items-center justify-center p-4 md:p-6">
       <ConsolaJuego>
@@ -177,6 +184,7 @@ export default function Home() {
               nombreJugador={nombreJugador}
               dificultad={dificultadAhorcado}
               onSalir={volverAlMenu}
+              onNuevaBusqueda={nuevaBusquedaAhorcado}
             />
           )}
 

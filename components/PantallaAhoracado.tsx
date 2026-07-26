@@ -31,6 +31,7 @@ interface PantallaAhorcadoProps {
   nombreJugador: string; // nombre visible del usuario logueado (para mostrar quién ganó)
   dificultad: DificultadAhorcado; // elegida en el lobby antes de crear la sala
   onSalir: () => void;
+  onNuevaBusqueda: () => void; // cuando alguien no quiere revancha: vuelve a buscar sala, misma dificultad
 }
 
 export default function PantallaAhorcado({
@@ -39,6 +40,7 @@ export default function PantallaAhorcado({
   nombreJugador,
   dificultad,
   onSalir,
+  onNuevaBusqueda,
 }: PantallaAhorcadoProps) {
   const { sala, rivalConectado, cargado } = useSala(salaInicial.id, usuarioId);
   const salaActual = sala ?? salaInicial;
@@ -50,6 +52,8 @@ export default function PantallaAhorcado({
   const [arriesgando, setArriesgando] = useState(false);
   const [palabraArriesgada, setPalabraArriesgada] = useState("");
   const [enviandoArriesgo, setEnviandoArriesgo] = useState(false);
+  const [pidiendoRevancha, setPidiendoRevancha] = useState(false);
+  const [reiniciandoRevancha, setReiniciandoRevancha] = useState(false);
 
   // Solo el creador elige la palabra inicial, una vez que el rival ya está en la sala
   useEffect(() => {
@@ -68,6 +72,7 @@ export default function PantallaAhorcado({
             [salaActual.creador_id]: false,
             [salaActual.oponente_id!]: false,
           },
+          revanchaSolicitada: {},
           turno: salaActual.creador_id, // arranca el creador
           ganadorId: null,
           ganadorNombre: null,
@@ -105,6 +110,7 @@ export default function PantallaAhorcado({
   const { palabra, letrasProbadas, turno } = estadoJuego;
   const erroresPorJugador = estadoJuego.erroresPorJugador ?? {};
   const arriesgoUsado = estadoJuego.arriesgoUsado ?? {};
+  const revanchaSolicitada = estadoJuego.revanchaSolicitada ?? {};
   const ganadorIdActual = estadoJuego.ganadorId ?? null;
   const ganadorNombreActual = estadoJuego.ganadorNombre ?? null;
   const misErrores = erroresPorJugador[usuarioId] ?? 0;
@@ -113,6 +119,9 @@ export default function PantallaAhorcado({
   const rivalEliminado = erroresRival >= MAX_ERRORES;
   const yoArriesgoUsado = arriesgoUsado[usuarioId] ?? false;
   const rivalArriesgoUsado = rivalId ? arriesgoUsado[rivalId] ?? false : false;
+  const yoQuieroRevancha = revanchaSolicitada[usuarioId] ?? false;
+  const rivalQuiereRevancha = rivalId ? revanchaSolicitada[rivalId] ?? false : false;
+  const ambosQuierenRevancha = yoQuieroRevancha && rivalQuiereRevancha;
 
   const esMiTurno = turno === usuarioId;
   const gano = palabraCompleta(palabra, letrasProbadas);
@@ -126,6 +135,39 @@ export default function PantallaAhorcado({
 
   const puedeArriesgar =
     esMiTurno && !terminado && !yoEliminado && !yoArriesgoUsado && !!rivalId && alcanzoPorcentajeMinimo;
+
+  // Cuando los dos jugadores pidieron revancha, el creador arma la ronda nueva
+  // (evita que los dos disparen el reinicio al mismo tiempo y choquen).
+  useEffect(() => {
+    if (terminado && ambosQuierenRevancha && esCreador && !reiniciandoRevancha && rivalId) {
+      setReiniciandoRevancha(true);
+      obtenerPalabraAleatoria(dificultad).then(async (palabraNueva) => {
+        const nuevoEstado: EstadoAhorcado = {
+          palabra: normalizarPalabra(palabraNueva),
+          dificultad,
+          letrasProbadas: [],
+          erroresPorJugador: {
+            [salaActual.creador_id]: 0,
+            [salaActual.oponente_id!]: 0,
+          },
+          arriesgoUsado: {
+            [salaActual.creador_id]: false,
+            [salaActual.oponente_id!]: false,
+          },
+          revanchaSolicitada: {},
+          turno: salaActual.creador_id,
+          ganadorId: null,
+          ganadorNombre: null,
+        };
+        await supabase
+          .from("salas")
+          .update({ estado: "en_curso", estado_juego: nuevoEstado })
+          .eq("id", salaActual.id);
+        setReiniciandoRevancha(false);
+        setPidiendoRevancha(false);
+      });
+    }
+  }, [terminado, ambosQuierenRevancha, esCreador, reiniciandoRevancha, rivalId, dificultad, salaActual]);
 
   async function elegirLetra(letra: string) {
     if (!esMiTurno || terminado || yoEliminado || letrasProbadas.includes(letra) || !rivalId) return;
@@ -152,6 +194,7 @@ export default function PantallaAhorcado({
       letrasProbadas: nuevasLetrasProbadas,
       erroresPorJugador: nuevoErroresPorJugador,
       arriesgoUsado,
+      revanchaSolicitada,
       turno: siguienteTurno,
       ganadorId: seCompleto ? usuarioId : ganadorIdActual,
       ganadorNombre: seCompleto ? nombreJugador : ganadorNombreActual,
@@ -185,6 +228,7 @@ export default function PantallaAhorcado({
         letrasProbadas: nuevasLetrasProbadas,
         erroresPorJugador,
         arriesgoUsado: nuevoArriesgoUsado,
+        revanchaSolicitada,
         turno,
         ganadorId: usuarioId,
         ganadorNombre: nombreJugador,
@@ -203,6 +247,7 @@ export default function PantallaAhorcado({
         letrasProbadas,
         erroresPorJugador: nuevoErroresPorJugador,
         arriesgoUsado: nuevoArriesgoUsado,
+        revanchaSolicitada,
         turno: siguienteTurno,
       };
 
@@ -217,6 +262,24 @@ export default function PantallaAhorcado({
     setPalabraArriesgada("");
     setArriesgando(false);
     setEnviandoArriesgo(false);
+  }
+
+  async function pedirRevancha() {
+    if (!rivalId || pidiendoRevancha || yoQuieroRevancha) return;
+    setPidiendoRevancha(true);
+    const nuevoEstado: EstadoAhorcado = {
+      ...estadoJuego,
+      palabra,
+      dificultad,
+      letrasProbadas,
+      erroresPorJugador,
+      arriesgoUsado,
+      turno,
+      ganadorId: ganadorIdActual,
+      ganadorNombre: ganadorNombreActual,
+      revanchaSolicitada: { ...revanchaSolicitada, [usuarioId]: true },
+    };
+    await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
   }
 
   let mensajeFinal = "";
@@ -349,12 +412,39 @@ export default function PantallaAhorcado({
             <p className={clsx("text-2xl font-bold", gano ? "text-green-500" : "text-red-500")}>
               {mensajeFinal}
             </p>
-            <button
-              onClick={onSalir}
-              className="font-display text-lg tracking-wide bg-dorado-claro text-tinta rounded-full px-8 py-3 shadow-chapa"
-            >
-              VOLVER AL MENÚ
-            </button>
+
+            {reiniciandoRevancha ? (
+              <p className="font-body text-sm text-crema/70">Armando la revancha...</p>
+            ) : yoQuieroRevancha ? (
+              <p className="font-body text-sm text-crema/70">
+                Esperando a que tu rival acepte la revancha...
+              </p>
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                {rivalQuiereRevancha && (
+                  <p className="font-body text-xs text-linea-violeta text-center">
+                    Tu rival quiere revancha 👀
+                  </p>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    onClick={pedirRevancha}
+                    className="font-display text-base tracking-wide bg-linea-violeta text-crema rounded-full px-6 py-3 shadow-chapa"
+                  >
+                    🔁 REVANCHA
+                  </button>
+                  <button
+                    onClick={onNuevaBusqueda}
+                    className="font-display text-base tracking-wide bg-dorado-claro text-tinta rounded-full px-6 py-3 shadow-chapa"
+                  >
+                    BUSCAR OTRO RIVAL
+                  </button>
+                </div>
+                <button onClick={onSalir} className="font-body text-xs underline text-crema/50 mt-1">
+                  volver al menú principal
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

@@ -11,6 +11,7 @@ export interface EstadoAhorcado {
   turno: string; // usuarioId de quien le toca adivinar
   ganadorId?: string | null;
   ganadorNombre?: string | null;
+  revanchaSolicitada?: Record<string, boolean>; // usuarioId -> si pidio revancha
 }
 
 const MAX_ERRORES = 6;
