@@ -119,7 +119,13 @@ export default function PantallaAhorcado({
   const ambosEliminados = yoEliminado && rivalEliminado;
   const terminado = gano || ambosEliminados;
 
-  const puedeArriesgar = esMiTurno && !terminado && !yoEliminado && !yoArriesgoUsado && !!rivalId;
+  const letrasUnicasPalabra = Array.from(new Set(palabra.split("")));
+  const letrasAcertadas = letrasUnicasPalabra.filter((l) => letrasProbadas.includes(l));
+  const porcentajeRevelado = letrasAcertadas.length / letrasUnicasPalabra.length;
+  const alcanzoPorcentajeMinimo = porcentajeRevelado >= 0.2;
+
+  const puedeArriesgar =
+    esMiTurno && !terminado && !yoEliminado && !yoArriesgoUsado && !!rivalId && alcanzoPorcentajeMinimo;
 
   async function elegirLetra(letra: string) {
     if (!esMiTurno || terminado || yoEliminado || letrasProbadas.includes(letra) || !rivalId) return;
@@ -282,6 +288,12 @@ export default function PantallaAhorcado({
           );
         })}
       </div>
+
+      {esMiTurno && !terminado && !yoEliminado && !yoArriesgoUsado && !alcanzoPorcentajeMinimo && !!rivalId && (
+        <p className="font-body text-[11px] text-crema/40 text-center mt-1">
+          Necesitás descubrir al menos el 20% de la palabra para poder arriesgar
+        </p>
+      )}
 
       {puedeArriesgar && (
         <div className="w-full flex flex-col items-center gap-2 mt-2">
