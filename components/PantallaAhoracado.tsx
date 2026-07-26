@@ -82,6 +82,53 @@ export default function PantallaAhorcado({
     }
   }, [estadoJuego?.palabra, esCreador, rivalConectado, inicializando, dificultad, salaActual]);
 
+  // Cuando los dos jugadores pidieron revancha, el creador arma la ronda nueva.
+  // OJO: este hook tiene que estar ANTES de cualquier "return" condicional del
+  // componente (Rules of Hooks) — por eso recalcula todo con optional chaining
+  // en vez de usar las constantes de más abajo, que todavía no existen acá.
+  useEffect(() => {
+    if (!estadoJuego?.palabra || !rivalId) return;
+
+    const erroresPorJugador = estadoJuego.erroresPorJugador ?? {};
+    const yoEliminadoAhora = (erroresPorJugador[usuarioId] ?? 0) >= MAX_ERRORES;
+    const rivalEliminadoAhora = (erroresPorJugador[rivalId] ?? 0) >= MAX_ERRORES;
+    const ganoAhora = palabraCompleta(estadoJuego.palabra, estadoJuego.letrasProbadas);
+    const terminadoAhora = ganoAhora || (yoEliminadoAhora && rivalEliminadoAhora);
+
+    const revanchaSolicitadaAhora = estadoJuego.revanchaSolicitada ?? {};
+    const ambosQuierenRevanchaAhora =
+      (revanchaSolicitadaAhora[usuarioId] ?? false) && (revanchaSolicitadaAhora[rivalId] ?? false);
+
+    if (terminadoAhora && ambosQuierenRevanchaAhora && esCreador && !reiniciandoRevancha) {
+      setReiniciandoRevancha(true);
+      obtenerPalabraAleatoria(dificultad).then(async (palabraNueva) => {
+        const nuevoEstado: EstadoAhorcado = {
+          palabra: normalizarPalabra(palabraNueva),
+          dificultad,
+          letrasProbadas: [],
+          erroresPorJugador: {
+            [salaActual.creador_id]: 0,
+            [salaActual.oponente_id!]: 0,
+          },
+          arriesgoUsado: {
+            [salaActual.creador_id]: false,
+            [salaActual.oponente_id!]: false,
+          },
+          revanchaSolicitada: {},
+          turno: salaActual.creador_id,
+          ganadorId: null,
+          ganadorNombre: null,
+        };
+        await supabase
+          .from("salas")
+          .update({ estado: "en_curso", estado_juego: nuevoEstado })
+          .eq("id", salaActual.id);
+        setReiniciandoRevancha(false);
+        setPidiendoRevancha(false);
+      });
+    }
+  }, [estadoJuego, esCreador, reiniciandoRevancha, rivalId, dificultad, salaActual, usuarioId]);
+
   if (!cargado || !rivalConectado) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
@@ -121,7 +168,6 @@ export default function PantallaAhorcado({
   const rivalArriesgoUsado = rivalId ? arriesgoUsado[rivalId] ?? false : false;
   const yoQuieroRevancha = revanchaSolicitada[usuarioId] ?? false;
   const rivalQuiereRevancha = rivalId ? revanchaSolicitada[rivalId] ?? false : false;
-  const ambosQuierenRevancha = yoQuieroRevancha && rivalQuiereRevancha;
 
   const esMiTurno = turno === usuarioId;
   const gano = palabraCompleta(palabra, letrasProbadas);
@@ -135,39 +181,6 @@ export default function PantallaAhorcado({
 
   const puedeArriesgar =
     esMiTurno && !terminado && !yoEliminado && !yoArriesgoUsado && !!rivalId && alcanzoPorcentajeMinimo;
-
-  // Cuando los dos jugadores pidieron revancha, el creador arma la ronda nueva
-  // (evita que los dos disparen el reinicio al mismo tiempo y choquen).
-  useEffect(() => {
-    if (terminado && ambosQuierenRevancha && esCreador && !reiniciandoRevancha && rivalId) {
-      setReiniciandoRevancha(true);
-      obtenerPalabraAleatoria(dificultad).then(async (palabraNueva) => {
-        const nuevoEstado: EstadoAhorcado = {
-          palabra: normalizarPalabra(palabraNueva),
-          dificultad,
-          letrasProbadas: [],
-          erroresPorJugador: {
-            [salaActual.creador_id]: 0,
-            [salaActual.oponente_id!]: 0,
-          },
-          arriesgoUsado: {
-            [salaActual.creador_id]: false,
-            [salaActual.oponente_id!]: false,
-          },
-          revanchaSolicitada: {},
-          turno: salaActual.creador_id,
-          ganadorId: null,
-          ganadorNombre: null,
-        };
-        await supabase
-          .from("salas")
-          .update({ estado: "en_curso", estado_juego: nuevoEstado })
-          .eq("id", salaActual.id);
-        setReiniciandoRevancha(false);
-        setPidiendoRevancha(false);
-      });
-    }
-  }, [terminado, ambosQuierenRevancha, esCreador, reiniciandoRevancha, rivalId, dificultad, salaActual]);
 
   async function elegirLetra(letra: string) {
     if (!esMiTurno || terminado || yoEliminado || letrasProbadas.includes(letra) || !rivalId) return;
