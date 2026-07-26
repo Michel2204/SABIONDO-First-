@@ -21,14 +21,19 @@ import { Sala } from "@/lib/salas";
 import { Categoria, Modo, Pantalla, Pregunta } from "@/lib/types";
 import { DificultadAhorcado } from "@/lib/ahorcadoApi";
 import PantallaDuelo from "@/components/PantallaDuelo";
+import { asegurarNombreGuardado, nombreDesdeUsuario } from "@/lib/perfiles";
 
 const PREGUNTAS_POR_PARTIDA = 6;
 
 export default function Home() {
   const { usuario, logueado } = useAuth();
-  const nombreJugador = usuario
-    ? (usuario.user_metadata?.full_name as string | undefined) ?? usuario.email ?? "Jugador"
-    : "Jugador";
+  const nombreJugador = nombreDesdeUsuario(usuario);
+
+  // Guarda el nombre server-side para que el rival pueda verlo sin
+  // depender de sus propios metadatos de auth de Google.
+  useEffect(() => {
+    if (usuario) asegurarNombreGuardado(usuario);
+  }, [usuario]);
   // Vidas de Carrera (propias)
   const { vidas: vidasCarrera, proximaVidaEn: proximaCarreraEn, nivel, cargado: carreraCargado, perderVida: perderVidaCarrera, avanzarNivel } = usePerfilJuego();
 

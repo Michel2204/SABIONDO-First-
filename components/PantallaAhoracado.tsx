@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import clsx from "clsx";
 import { useSala } from "@/lib/useSala";
 import { finalizarSala, Sala } from "@/lib/salas";
@@ -13,6 +13,8 @@ import {
   palabraCompleta,
 } from "@/lib/ahorcadoApi";
 import { supabase } from "@/lib/supabaseClient";
+import { obtenerNombres } from "@/lib/perfiles";
+import PanelFinPartida from "@/components/PanelFinPartida";
 
 const ALFABETO = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
@@ -21,17 +23,17 @@ function normalizarPalabra(palabra: string) {
     .toUpperCase()
     .normalize("NFD")
     // eslint-disable-next-line no-control-regex
-    .replace(/[\u0300-\u036f]/g, "") // saca los tildes, deja la Ñ intacta
-    .replace(/Ü/g, "U"); // opcional: si no querés diéresis tampoco
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/Ü/g, "U");
 }
 
 interface PantallaAhorcadoProps {
   salaInicial: Sala;
   usuarioId: string;
-  nombreJugador: string; // nombre visible del usuario logueado (para mostrar quién ganó)
-  dificultad: DificultadAhorcado; // elegida en el lobby antes de crear la sala
+  nombreJugador: string;
+  dificultad: DificultadAhorcado;
   onSalir: () => void;
-  onNuevaBusqueda: () => void; // cuando alguien no quiere revancha: vuelve a buscar sala, misma dificultad
+  onNuevaBusqueda: () => void;
 }
 
 export default function PantallaAhorcado({
@@ -54,8 +56,20 @@ export default function PantallaAhorcado({
   const [enviandoArriesgo, setEnviandoArriesgo] = useState(false);
   const [pidiendoRevancha, setPidiendoRevancha] = useState(false);
   const [reiniciandoRevancha, setReiniciandoRevancha] = useState(false);
+  const [nombreRival, setNombreRival] = useState("Rival");
 
-  // Solo el creador elige la palabra inicial, una vez que el rival ya está en la sala
+  // Trae el nombre real del rival apenas se conoce su id
+  useEffect(() => {
+    if (!rivalId) return;
+    let cancelado = false;
+    obtenerNombres([rivalId]).then((mapa) => {
+      if (!cancelado && mapa[rivalId]) setNombreRival(mapa[rivalId]);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [rivalId]);
+
   useEffect(() => {
     if (!estadoJuego?.palabra && esCreador && rivalConectado && !inicializando) {
       setInicializando(true);
@@ -73,7 +87,7 @@ export default function PantallaAhorcado({
             [salaActual.oponente_id!]: false,
           },
           revanchaSolicitada: {},
-          turno: salaActual.creador_id, // arranca el creador
+          turno: salaActual.creador_id,
           ganadorId: null,
           ganadorNombre: null,
         };
@@ -82,10 +96,6 @@ export default function PantallaAhorcado({
     }
   }, [estadoJuego?.palabra, esCreador, rivalConectado, inicializando, dificultad, salaActual]);
 
-  // Cuando los dos jugadores pidieron revancha, el creador arma la ronda nueva.
-  // OJO: este hook tiene que estar ANTES de cualquier "return" condicional del
-  // componente (Rules of Hooks) — por eso recalcula todo con optional chaining
-  // en vez de usar las constantes de más abajo, que todavía no existen acá.
   useEffect(() => {
     if (!estadoJuego?.palabra || !rivalId) return;
 
@@ -196,8 +206,6 @@ export default function PantallaAhorcado({
       [usuarioId]: misErroresNuevo,
     };
 
-    // Pasa el turno al rival, salvo que el rival ya esté eliminado y yo no —
-    // en ese caso sigo jugando solo.
     const siguienteTurno = rivalEliminado && !yoQuedoEliminado ? usuarioId : rivalId;
 
     const nuevoEstado: EstadoAhorcado = {
@@ -267,7 +275,6 @@ export default function PantallaAhorcado({
       await supabase.from("salas").update({ estado_juego: nuevoEstado }).eq("id", salaActual.id);
 
       if (rivalEliminado) {
-        // yo también quedé en MAX_ERRORES recién: los dos afuera, se cierra la partida
         await finalizarSala(salaActual.id);
       }
     }
@@ -315,10 +322,10 @@ export default function PantallaAhorcado({
 
       <div className="flex justify-between w-full text-xs font-heading uppercase tracking-widest">
         <span className={clsx(yoEliminado ? "text-linea-rojo" : "text-crema/70")}>
-          vos: {misErrores}/{MAX_ERRORES} {yoEliminado && "· eliminado"} {!yoEliminado && yoArriesgoUsado && "· arriesgó"}
+          {nombreJugador}: {misErrores}/{MAX_ERRORES} {yoEliminado && "· eliminado"} {!yoEliminado && yoArriesgoUsado && "· arriesgó"}
         </span>
         <span className={clsx(rivalEliminado ? "text-linea-rojo" : "text-crema/70")}>
-          rival: {erroresRival}/{MAX_ERRORES} {rivalEliminado && "· eliminado"} {!rivalEliminado && rivalArriesgoUsado && "· arriesgó"}
+          {nombreRival}: {erroresRival}/{MAX_ERRORES} {rivalEliminado && "· eliminado"} {!rivalEliminado && rivalArriesgoUsado && "· arriesgó"}
         </span>
       </div>
 
@@ -339,7 +346,7 @@ export default function PantallaAhorcado({
             ? "Te quedaste sin intentos — esperá a ver si tu rival la adivina."
             : esMiTurno
             ? "Tu turno — elegí una letra"
-            : "Turno del rival, esperá..."}
+            : `Turno de ${nombreRival}, esperá...`}
         </p>
       )}
 
@@ -416,49 +423,24 @@ export default function PantallaAhorcado({
       )}
 
       <AnimatePresence>
-        {terminado && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center gap-4 mt-4"
-          >
-            <p className={clsx("text-2xl font-bold", gano ? "text-green-500" : "text-red-500")}>
-              {mensajeFinal}
-            </p>
-
-            {reiniciandoRevancha ? (
-              <p className="font-body text-sm text-crema/70">Armando la revancha...</p>
-            ) : yoQuieroRevancha ? (
-              <p className="font-body text-sm text-crema/70">
-                Esperando a que tu rival acepte la revancha...
-              </p>
-            ) : (
-              <div className="flex flex-col items-center gap-3">
-                {rivalQuiereRevancha && (
-                  <p className="font-body text-xs text-linea-violeta text-center">
-                    Tu rival quiere revancha 👀
-                  </p>
-                )}
-                <div className="flex gap-3">
-                  <button
-                    onClick={pedirRevancha}
-                    className="font-display text-base tracking-wide bg-linea-violeta text-crema rounded-full px-6 py-3 shadow-chapa"
-                  >
-                    🔁 REVANCHA
-                  </button>
-                  <button
-                    onClick={onNuevaBusqueda}
-                    className="font-display text-base tracking-wide bg-dorado-claro text-tinta rounded-full px-6 py-3 shadow-chapa"
-                  >
-                    BUSCAR OTRO RIVAL
-                  </button>
-                </div>
-                <button onClick={onSalir} className="font-body text-xs underline text-crema/50 mt-1">
-                  volver al menú principal
-                </button>
-              </div>
-            )}
-          </motion.div>
+        {terminado && rivalId && (
+          <PanelFinPartida
+            juego="ahorcado"
+            salaId={salaActual.id}
+            usuarioId={usuarioId}
+            rivalId={rivalId}
+            miNombre={nombreJugador}
+            rivalNombre={nombreRival}
+            mensaje={mensajeFinal}
+            ganoYo={ganadorIdActual === usuarioId}
+            empate={ambosEliminados}
+            yoQuieroRevancha={yoQuieroRevancha}
+            rivalQuiereRevancha={rivalQuiereRevancha}
+            reiniciandoRevancha={reiniciandoRevancha}
+            onPedirRevancha={pedirRevancha}
+            onNuevaBusqueda={onNuevaBusqueda}
+            onSalir={onSalir}
+          />
         )}
       </AnimatePresence>
     </div>
